@@ -108,21 +108,48 @@ class Transformer(nn.Module):
 
         return x
 
-    def forward(
-        self,
-        src,
-        tgt
-    ):
+    def forward(self, src, tgt):
+        encoder_output = self.encode(src)
+        decoder_output = self.decode(tgt, encoder_output)
+        logits = self.output_projection(decoder_output)
+        return logits
+
+    @torch.no_grad()
+    def generate(self, src, max_len, bos_token_id):
+        """
+        Autoregressively generate target tokens.
+        """
+
+        self.eval()
 
         encoder_output = self.encode(src)
 
-        decoder_output = self.decode(
-            tgt,
-            encoder_output
+        generated = torch.full(
+            (src.size(0), 1),
+            bos_token_id,
+            dtype=torch.long,
+            device=src.device
         )
 
-        logits = self.output_projection(
-            decoder_output
-        )
+        for _ in range(max_len):
 
-        return logits
+            decoder_output = self.decode(
+                generated,
+                encoder_output
+            )
+
+            logits = self.output_projection(
+                decoder_output[:, -1, :]
+            )
+
+            next_token = logits.argmax(
+                dim=-1,
+                keepdim=True
+            )
+
+            generated = torch.cat(
+                [generated, next_token],
+                dim=1
+            )
+
+        return generated[:, 1:]
